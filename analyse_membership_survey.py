@@ -107,7 +107,7 @@ def extract_comments(df: pd.DataFrame):
         subset=df_comments.columns.difference(_NKK_METADATA), how="all"
     )
 
-    return df_comments
+    return df_comments.sort_values(by="02 - Rutebyg - mit niveau (radio)")
 
 
 def format_to_markdown_rutebyg(row):
@@ -133,21 +133,8 @@ def format_to_markdown_volunteer(row):
         else None
     )
 
-
-if __name__ == "__main__":
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    MD_DIR.mkdir(exist_ok=True)
-
-    file_list = list(DATA_DIR.glob("submission*.xlsx"))
-    submissions_file = file_list[0]
-
-    print(submissions_file)
-
-    df = load_and_preprocess_df(submissions_file)
-    df_c = extract_comments(df)
-    df_c.sort_values(by="02 - Rutebyg - mit niveau (radio)", inplace=True)
-
-    # Save rutebyg feedback to markdown
+def make_comment_documents(df_c:pd.DataFrame):
+ # Save rutebyg feedback to markdown
     md_text_rutebyg = "\n\n".join(
         filter(
             None,
@@ -182,3 +169,18 @@ if __name__ == "__main__":
         file.write("# Medlemsundersøgelse 2023\n")
         file.write("## Feedback for frivillighed\n")
         file.write(md_text_volunteering)
+
+
+if __name__ == "__main__":
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    MD_DIR.mkdir(exist_ok=True)
+
+    file_list = list(DATA_DIR.glob("submission*.xlsx"))
+    submissions_file = file_list[0]
+
+    print(submissions_file)
+
+    df = load_and_preprocess_df(submissions_file)
+    df_c = extract_comments(df)
+
+    make_comment_documents(df_c)
