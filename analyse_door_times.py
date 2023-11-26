@@ -38,7 +38,7 @@ def make_morning_members_hourly_plot(
     a.set_title("Morgenmedlemmers timevis fordeling (total)")
     a.set_xlabel("Time")
     a.set_ylabel("Antal")
-    # plt.show()
+
     f.savefig(OUTPUT_DIR / "morning_members_hourly.png", dpi=300)
     return f, a
 
@@ -62,12 +62,7 @@ def make_morning_members_daily_hourly_plot(
 def make_all_members_daily_hourly_plot(
     df: pd.DataFrame,
 ) -> Tuple[plt.Figure, plt.Axes]:
-    f, a = plt.subplots(
-        nrows=7, 
-        sharex=True, 
-        sharey=True, 
-        figsize=(8, 12)
-    )
+    f, a = plt.subplots(nrows=7, sharex=True, sharey=True, figsize=(8, 12))
     a[-1].set_xticks(range(5, 23))
     for i in range(7):
         series1 = df[(df.token_type == 1) & (df.weekday == i)].tid
@@ -75,7 +70,12 @@ def make_all_members_daily_hourly_plot(
         d1 = make_hourly_distribution_from_series(series1)
         d2 = make_hourly_distribution_from_series(series2)
         a[i].bar(d1.index, d1.values, label="Alm.")
-        a[i].bar(d2.index, d2.values, label="Morgen", bottom = d1[d1.index.isin(d2.index)].values)
+        a[i].bar(
+            d2.index,
+            d2.values,
+            label="Morgen",
+            bottom=d1[d1.index.isin(d2.index)].values,
+        )
         a[i].set_ylabel(WEEKDAYS[i])
         a[i].axvline(x=14.5 if i < 5 else 11.5, color="r", label="Morgenmedlems-grænse")
     a[0].legend(loc="upper left")

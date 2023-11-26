@@ -1,5 +1,6 @@
 #!/usr/bin/python
 from pathlib import Path
+import string
 from typing import Tuple
 
 import numpy as np
@@ -11,6 +12,7 @@ import pytz
 DATA_DIR = Path("./data")
 OUTPUT_DIR = Path("./output")
 MD_DIR = Path("./md-files")
+FIG_DIR = Path("./figures")
 
 METADATA_COLS = [
     "Submission ID",
@@ -31,7 +33,7 @@ DATA_TYPES = {
     "05 - Ruterne, indenfor mit niveau, er varierede og interessante. (slider)": "Int32",
     "06 - Der er nok ruter på mit niveau i klubben. (slider)": "Int32",
     "07 - Hvordan føles densiteten (greb pr. kvm) i klubben? (slider)": "Int32",
-    "08 - Jeg kunne godt tænke mig mere af disse typer problemer: (checkbox)": "Int32",
+    "08 - Jeg kunne godt tænke mig mere af disse typer problemer: (checkbox)": str,
     "Rutebyg - kommentarer (textarea)": str,
     "10 - Stemningen i NKK er inklusiv, og jeg føler mig hjemme i klubben. (slider)": "Int32",
     "10c - NKKs stemning - kommentarer (textfield)": str,
@@ -40,27 +42,62 @@ DATA_TYPES = {
     "13 - Frivillighed - Kommentarer (textarea)": str,
 }
 
+COLUMN_MAP_LANGUAGE = {
+    "00 - Member Type (radio)": "00 - Medlemstype (radio)",
+    "0 - Gender (radio)": "0 - Køn (radio)",
+    "01 - Routesetting - height (slider)": "01 - Rutebyg - højde (slider)",
+    "02 - Routesetting - level (radio)": "02 - Rutebyg - mit niveau (radio)",
+    "03 - NKKs problems fit my climbing style (slider)": "03 - Problemerne i NKK passer til min klatrestil.  (slider)",
+    "04 - NKKs problems fit my climbing level (slider)": "04 - Problemerne i NKK passer til mit niveau. (slider)",
+    "05 - The Problems within my level are varied and interesting (slider)": "05 - Ruterne, indenfor mit niveau, er varierede og interessante. (slider)",
+    "06 - There are enough problems to fit my level in NKK (slider)": "06 - Der er nok ruter på mit niveau i klubben. (slider)",
+    "07 - How is the density of holds in NKKs wall? (slider)": "07 - Hvordan føles densiteten (greb pr. kvm) i klubben? (slider)",
+    "08 - I would like more of this type of problem in NKK (checkbox)": "08 - Jeg kunne godt tænke mig mere af disse typer problemer: (checkbox)",
+    "09 - Routesetting Comments (textarea)": "Rutebyg - kommentarer (textarea)",
+    "10 - NKK has an inclusive vibe, and I feel at home in NKK (slider)": "10 - Stemningen i NKK er inklusiv, og jeg føler mig hjemme i klubben. (slider)",
+    "10c - NKK's vibe - comments (textarea)": "10c - NKKs stemning - kommentarer (textfield)",
+    "11 - I know how I can contribute to NKK as a volunteer (slider)": "11 - Jeg ved, hvordan jeg kan bidrage til NKK som frivillig (slider)",
+    "12 - I want to volunteer in NKK (slider)": "12 - Jeg har lyst til, at være frivillig i NKK (slider)",
+    "13 - Volunteering - Comments (textarea)": "13 - Frivillighed - Kommentarer (textarea)",
+}
 
-def load_and_preprocess_df(p: Path) -> pd.DataFrame:
-    df = pd.read_excel(p)
-    # remove full null values
-    df = df.dropna(subset=df.columns.difference(METADATA_COLS), how="all")
+
+def load_and_preprocess_df(p_dk: Path, p_en: Path) -> pd.DataFrame:
+    df_dk = pd.read_excel(p_dk)
+    df_dk = df_dk.dropna(subset=df_dk.columns.difference(METADATA_COLS), how="all")
+    df_dk["Language"] = "Danish"
+    print(f"Danish responses: {len(df_dk)}")
+
+    df_en = pd.read_excel(p_en)
+    df_en = df_en.dropna(subset=df_en.columns.difference(METADATA_COLS), how="all")
+    df_en["Language"] = "English"
+    print(f"English responses: {len(df_en)}")
+
+    df_en.rename(columns=COLUMN_MAP_LANGUAGE, inplace=True)
 
     # merge, somehow, find out later.
+    df = pd.concat([df_dk, df_en], ignore_index=True)
+
     # data types
     for _col, _type in DATA_TYPES.items():
         if _type != str:
             df[_col] = pd.to_numeric(df[_col], errors="coerce").astype(_type)
             #  df[_col] = df[_col].astype(_type)
 
+    print(df["00 - Medlemstype (radio)"].value_counts())
     df["00 - Medlemstype (radio)"] = df["00 - Medlemstype (radio)"].map(
         {'"2"': "morgen", '"1"': "normal"}
     )
-
+    print(df["0 - Køn (radio)"].value_counts())
     df["0 - Køn (radio)"] = df["0 - Køn (radio)"].map(
-        {'"M"': "Mand", '"K"': "Kvinde", "nan": "X", "O": "Andet Køn"}
+        {'"M"': "Mand", '"F"': "Kvinde", "NaN": "X", "O": "Andet"}
     )
-
+    df["02 - Rutebyg - mit niveau (radio)"] = (
+        df["02 - Rutebyg - mit niveau (radio)"]
+        .replace(np.nan, "1")
+        .apply(lambda s: s.strip('" '))
+    )
+    print(df["02 - Rutebyg - mit niveau (radio)"].value_counts(dropna=False))
     df["02 - Rutebyg - mit niveau (tekst)"] = df[
         "02 - Rutebyg - mit niveau (radio)"
     ].map(
@@ -71,12 +108,6 @@ def load_and_preprocess_df(p: Path) -> pd.DataFrame:
             "4": "Lilla",
             "5": "Rød",
             "6": "Sort",
-            '"1"': "Grøn",
-            '"2"': "Gul",
-            '"3"': "Blå",
-            '"4"': "Lilla",
-            '"5"': "Rød",
-            '"6"': "Sort",
             1: "Grøn",
             2: "Gul",
             3: "Blå",
@@ -85,9 +116,110 @@ def load_and_preprocess_df(p: Path) -> pd.DataFrame:
             6: "Sort",
         }
     )
+    print(df["02 - Rutebyg - mit niveau (tekst)"].value_counts())
 
     return df
 
+
+def make_survey_plots(df: pd.DataFrame):
+    _NKK_METADATA = [
+        "00 - Medlemstype (radio)",
+        "0 - Køn (radio)",
+        # "01 - Rutebyg - højde (slider)",
+        "02 - Rutebyg - mit niveau (radio)",
+        # "02 - Rutebyg - mit niveau (tekst)",
+    ]
+    _COLUMNS_SLIDER = [
+        "03 - Problemerne i NKK passer til min klatrestil.  (slider)",
+        "04 - Problemerne i NKK passer til mit niveau. (slider)",
+        "05 - Ruterne, indenfor mit niveau, er varierede og interessante. (slider)",
+        "06 - Der er nok ruter på mit niveau i klubben. (slider)",
+        "07 - Hvordan føles densiteten (greb pr. kvm) i klubben? (slider)",
+        "10 - Stemningen i NKK er inklusiv, og jeg føler mig hjemme i klubben. (slider)",
+        "11 - Jeg ved, hvordan jeg kan bidrage til NKK som frivillig (slider)",
+        "12 - Jeg har lyst til, at være frivillig i NKK (slider)",
+    ]
+    _COLUMNS_CHECKBOX = [
+        "08 - Jeg kunne godt tænke mig mere af disse typer problemer: (checkbox)",
+    ]
+    _ROUTESET_LABEL_DICT = {
+        "1": "green",
+        "2": "xkcd:dark yellow",
+        "3": "blue",
+        "4": "purple",
+        "5": "red",
+        "6": "black",
+    }
+    for _DATA_COLUMN in _COLUMNS_SLIDER:
+        print("Now generating plots for: " + _DATA_COLUMN)
+        _ix = _DATA_COLUMN.split("-")[0].strip()
+
+        fig, axes = plt.subplots(
+            1, 3, figsize=(12, 6)
+        )  # TODO: noget med højde. Find lige ud af det på et tidspunkt...
+        for i, _SEG_COLUMN in enumerate(_NKK_METADATA):
+            _SEG_TYPES = sorted(df[_SEG_COLUMN].dropna().unique())
+            x = [
+                df[df[_SEG_COLUMN] == _SEG_TYPE][_DATA_COLUMN].dropna().values
+                for _SEG_TYPE in _SEG_TYPES
+            ]
+            if "niveau" in _SEG_COLUMN:
+                axes[i].hist(
+                    x,
+                    density=True,
+                    bins=np.arange(-0.5, 6.5, 1),
+                    histtype="bar",
+                    label=_SEG_TYPES,
+                    color=_ROUTESET_LABEL_DICT.values(),
+                )
+            else:
+                axes[i].hist(
+                    x,
+                    density=True,
+                    bins=np.arange(-0.5, 6.5, 1),
+                    histtype="bar",
+                    label=_SEG_TYPES,
+                )
+            axes[i].set_xticks(
+                range(6),
+                labels=["<NA>", "M.Uenig", "Uenig", "Neutral", "Enig", "M.Enig"],
+                rotation=60,
+            )
+            axes[i].legend(loc="upper left")
+            axes[i].set_title(_SEG_COLUMN.replace("(radio)","").strip(string.punctuation + " "))
+
+        fig.suptitle(
+            _DATA_COLUMN.removeprefix(_ix)
+            .replace("(slider)", "")
+            .strip(string.punctuation + " ")
+        )
+        fig.savefig(FIG_DIR/f"hist_{_ix}.png")
+        plt.close(fig)
+
+    # Selvrapporteret grad 
+    fig, ax = plt.subplots()
+    _SEG_COLUMN = _NKK_METADATA[1]
+    _DATA_COLUMN = _NKK_METADATA[2]
+    print("Now generating plots for: " + _DATA_COLUMN)
+    _SEG_TYPES = sorted(df[_SEG_COLUMN].dropna().unique())
+    
+    x = [
+        df[df[_SEG_COLUMN] == _SEG_TYPE][_DATA_COLUMN].dropna().values
+        for _SEG_TYPE in sorted(_SEG_TYPES, reverse=True)
+    ]
+
+    ax.hist(
+        x,
+        bins=np.arange(-0.5, 6.5, 1),
+        histtype="bar",
+        label=sorted(_SEG_TYPES, reverse=True),
+        density=True,
+    )
+    ax.set_xticklabels(["Grøn","Gul","Blå","Lilla","Rød","Sort"], rotation=45)
+    ax.legend(loc='upper left')
+    fig.suptitle(_DATA_COLUMN.replace("(radio)","").strip(string.punctuation + " "))
+    fig.savefig(FIG_DIR / "hist_grades")
+    plt.close(fig)
 
 def extract_comments(df: pd.DataFrame):
     _NKK_METADATA = [
@@ -133,15 +265,16 @@ def format_to_markdown_volunteer(row):
         else None
     )
 
-def make_comment_documents(df_c:pd.DataFrame):
- # Save rutebyg feedback to markdown
+
+def make_comment_documents(df_c: pd.DataFrame):
+    # Save rutebyg feedback to markdown
     md_text_rutebyg = "\n\n".join(
         filter(
             None,
             (format_to_markdown_rutebyg(row) for _, row in df_c.iterrows()),
         )
     )
-    with open(MD_DIR/"output_rutebyg.md", "w") as file:
+    with open(MD_DIR / "output_rutebyg.md", "w") as file:
         file.write("# Medlemsundersøgelse 2023\n")
         file.write("## Feedback for rutebyg\n")
         file.write(md_text_rutebyg)
@@ -165,22 +298,44 @@ def make_comment_documents(df_c:pd.DataFrame):
             (format_to_markdown_volunteer(row) for _, row in df_c.iterrows()),
         )
     )
-    with open(MD_DIR/"output_volunteer.md", "w") as file:
+    with open(MD_DIR / "output_volunteer.md", "w") as file:
         file.write("# Medlemsundersøgelse 2023\n")
         file.write("## Feedback for frivillighed\n")
         file.write(md_text_volunteering)
+
+def make_plots_document():
+    figure_paths = sorted(list(FIG_DIR.glob("*.png")))
+    # make the grade distribution chart come first
+    figure_paths.insert(0, figure_paths.pop(-1))
+    
+    with open(MD_DIR / 'collated.md', 'w') as file:
+        file.write("# Medlemsundersøgelse 2023\n")
+        file.write("## Oversigt over svar\n")
+        for path in figure_paths:
+            file.write(f'![{path.stem}]({str(path)})')
+            file.write('\n')
 
 
 if __name__ == "__main__":
     OUTPUT_DIR.mkdir(exist_ok=True)
     MD_DIR.mkdir(exist_ok=True)
+    FIG_DIR.mkdir(exist_ok=True)
 
-    file_list = list(DATA_DIR.glob("submission*.xlsx"))
-    submissions_file = file_list[0]
+    submissions_files = (
+        DATA_DIR / "submissions_dk.xlsx",
+        DATA_DIR / "submissions_en.xlsx",
+    )
 
-    print(submissions_file)
+    df = load_and_preprocess_df(*submissions_files)
+    print(f"Loaded responses: {len(df)} responses")
 
-    df = load_and_preprocess_df(submissions_file)
+    make_survey_plots(df)
+
+    make_plots_document()
+
     df_c = extract_comments(df)
-
+    print("Making comment documents....")
     make_comment_documents(df_c)
+    print(
+        f"DONE with comment documents, find them in {MD_DIR.absolute()}",
+    )

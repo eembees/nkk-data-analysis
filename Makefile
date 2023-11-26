@@ -1,8 +1,7 @@
-.PHONY: install run
+.PHONY: install run pdf build clean
 
 install:
 	pip install -r requirements.txt
-
 
 run:
 	python analyse_membership_survey.py
@@ -21,3 +20,7 @@ pdf-files/%.pdf: md-files/%.md
 clean:
 	rm -rf pdf-files/*
 	rm -f output/*.md
+	rm -f md-files/*
+	rm -f figures/*
+
+build: clean run pdf
