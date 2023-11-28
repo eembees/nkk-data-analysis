@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import ast
 from pathlib import Path
 import string
 from typing import Tuple
@@ -121,6 +122,16 @@ def load_and_preprocess_df(p_dk: Path, p_en: Path) -> pd.DataFrame:
     return df
 
 
+def make_hist_data_from_df(
+    df: pd.DataFrame, data_column: str, seg_column: str, reverse_seg_types=False
+) -> tuple[list[np.array], list[str]]:
+    seg_types = sorted(df[seg_column].dropna().unique(), reverse=reverse_seg_types)
+    return [
+        df[df[seg_column] == seg_type][data_column].dropna().values
+        for seg_type in seg_types
+    ], seg_types
+
+
 def make_survey_plots(df: pd.DataFrame):
     _NKK_METADATA = [
         "00 - Medlemstype (radio)",
@@ -139,9 +150,7 @@ def make_survey_plots(df: pd.DataFrame):
         "11 - Jeg ved, hvordan jeg kan bidrage til NKK som frivillig (slider)",
         "12 - Jeg har lyst til, at være frivillig i NKK (slider)",
     ]
-    _COLUMNS_CHECKBOX = [
-        "08 - Jeg kunne godt tænke mig mere af disse typer problemer: (checkbox)",
-    ]
+
     _ROUTESET_LABEL_DICT = {
         "1": "green",
         "2": "xkcd:dark yellow",
@@ -158,11 +167,7 @@ def make_survey_plots(df: pd.DataFrame):
             1, 3, figsize=(12, 6)
         )  # TODO: noget med højde. Find lige ud af det på et tidspunkt...
         for i, _SEG_COLUMN in enumerate(_NKK_METADATA):
-            _SEG_TYPES = sorted(df[_SEG_COLUMN].dropna().unique())
-            x = [
-                df[df[_SEG_COLUMN] == _SEG_TYPE][_DATA_COLUMN].dropna().values
-                for _SEG_TYPE in _SEG_TYPES
-            ]
+            x, _SEG_TYPES = make_hist_data_from_df(df, _DATA_COLUMN, _SEG_COLUMN)
             if "niveau" in _SEG_COLUMN:
                 axes[i].hist(
                     x,
@@ -186,40 +191,93 @@ def make_survey_plots(df: pd.DataFrame):
                 rotation=60,
             )
             axes[i].legend(loc="upper left")
-            axes[i].set_title(_SEG_COLUMN.replace("(radio)","").strip(string.punctuation + " "))
+            axes[i].set_title(
+                _SEG_COLUMN.replace("(radio)", "").strip(string.punctuation + " ")
+            )
 
         fig.suptitle(
             _DATA_COLUMN.removeprefix(_ix)
             .replace("(slider)", "")
             .strip(string.punctuation + " ")
         )
-        fig.savefig(FIG_DIR/f"hist_{_ix}.png")
+        fig.savefig(FIG_DIR / f"hist_{_ix}.png")
         plt.close(fig)
 
-    # Selvrapporteret grad 
+    # Selvrapporteret grad
     fig, ax = plt.subplots()
     _SEG_COLUMN = _NKK_METADATA[1]
     _DATA_COLUMN = _NKK_METADATA[2]
-    print("Now generating plots for: " + _DATA_COLUMN)
-    _SEG_TYPES = sorted(df[_SEG_COLUMN].dropna().unique())
-    
-    x = [
-        df[df[_SEG_COLUMN] == _SEG_TYPE][_DATA_COLUMN].dropna().values
-        for _SEG_TYPE in sorted(_SEG_TYPES, reverse=True)
-    ]
+    print("Now generating plots for: " + _DATA_COLUMN + "segmented on " + _SEG_COLUMN)
+    x, _SEG_TYPES = make_hist_data_from_df(
+        df, _DATA_COLUMN, _SEG_COLUMN, reverse_seg_types=True
+    )
 
     ax.hist(
         x,
         bins=np.arange(-0.5, 6.5, 1),
         histtype="bar",
-        label=sorted(_SEG_TYPES, reverse=True),
+        label=_SEG_TYPES,
         density=True,
     )
-    ax.set_xticklabels(["Grøn","Gul","Blå","Lilla","Rød","Sort"], rotation=45)
-    ax.legend(loc='upper left')
-    fig.suptitle(_DATA_COLUMN.replace("(radio)","").strip(string.punctuation + " "))
+    ax.set_xticklabels(["Grøn", "Gul", "Blå", "Lilla", "Rød", "Sort"], rotation=45)
+    ax.legend(loc="upper left")
+    fig.suptitle(_DATA_COLUMN.replace("(radio)", "").strip(string.punctuation + " "))
     fig.savefig(FIG_DIR / "hist_grades")
     plt.close(fig)
+
+    # Checkbox svar
+    _COLUMN_CHECKBOX = (
+        "08 - Jeg kunne godt tænke mig mere af disse typer problemer: (checkbox)"
+    )
+
+    df[_COLUMN_CHECKBOX] = df[_COLUMN_CHECKBOX].apply(
+        lambda o: ast.literal_eval(o) if isinstance(o, str) else []
+    )
+    df_expanded = df.explode(_COLUMN_CHECKBOX)
+    df_expanded[_COLUMN_CHECKBOX].replace(
+        {
+            "balance": np.NaN,
+            "tension": np.NaN,
+            "sitstart": np.NaN,
+            "udtopning": np.NaN,
+        },
+        inplace=True,
+    )
+
+    _SEG_COLUMN = _NKK_METADATA[2]
+    _DATA_COLUMN = _COLUMN_CHECKBOX
+    print(f"Now generating plots for: {_DATA_COLUMN}")
+    _ix = _DATA_COLUMN.split("-")[0].strip()
+
+    fig, axes = plt.subplots(
+        1, 3, figsize=(12, 6)
+    )  # TODO: noget med højde. Find lige ud af det på et tidspunkt...
+    for i, _SEG_COLUMN in enumerate(_NKK_METADATA):
+        x, _SEG_TYPES = make_hist_data_from_df(df_expanded, _DATA_COLUMN, _SEG_COLUMN)
+        if "niveau" in _SEG_COLUMN:
+            axes[i].hist(
+                x,
+                # density=True,
+                histtype="bar",
+                label=_SEG_TYPES,
+                color=_ROUTESET_LABEL_DICT.values(),
+            )
+        else:
+            axes[i].hist(
+                x,
+                # density=True,
+                histtype="bar",
+                label=_SEG_TYPES,
+            )
+        axes[i].legend()
+        axes[i].set_title(
+            _SEG_COLUMN.replace("(radio)", "").strip(string.punctuation + " ")
+        )
+
+    fig.suptitle(_DATA_COLUMN.replace("(checkbox)", "").strip(string.punctuation + " "))
+    plt.savefig(FIG_DIR / "hist_08_routeset_type.png")
+    plt.close(fig)
+
 
 def extract_comments(df: pd.DataFrame):
     _NKK_METADATA = [
@@ -303,17 +361,18 @@ def make_comment_documents(df_c: pd.DataFrame):
         file.write("## Feedback for frivillighed\n")
         file.write(md_text_volunteering)
 
+
 def make_plots_document():
     figure_paths = sorted(list(FIG_DIR.glob("*.png")))
     # make the grade distribution chart come first
     figure_paths.insert(0, figure_paths.pop(-1))
-    
-    with open(MD_DIR / 'collated.md', 'w') as file:
+
+    with open(MD_DIR / "collated.md", "w") as file:
         file.write("# Medlemsundersøgelse 2023\n")
         file.write("## Oversigt over svar\n")
         for path in figure_paths:
-            file.write(f'![{path.stem}]({str(path)})')
-            file.write('\n')
+            file.write(f"![{path.stem}]({str(path)})")
+            file.write("\n")
 
 
 if __name__ == "__main__":
